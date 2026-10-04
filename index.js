@@ -10,6 +10,7 @@ import { promisify } from "node:util";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
+import pkg from "./package.json" with { type: "json" };
 
 const run = promisify(execFile);
 
@@ -25,7 +26,7 @@ const env = { ...process.env, PATH: `/usr/bin:/bin:/usr/sbin:/sbin:${process.env
 const text = (t) => ({ content: [{ type: "text", text: t }] });
 const error = (t) => ({ ...text(t), isError: true });
 
-const server = new McpServer({ name: "receipt-printer", version: "1.0.0" });
+const server = new McpServer({ name: pkg.name, version: pkg.version });
 
 server.registerTool(
   "print_receipt",
