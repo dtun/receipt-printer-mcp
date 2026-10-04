@@ -1,0 +1,17 @@
+{
+  "name": "receipt-printer-mcp",
+  "version": "1.0.0",
+  "description": "MCP server for printing to the Rongta RP820 thermal receipt printer",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.0",
+    "zod": "^4.6.5"
+  },
+  "private": true
+}
