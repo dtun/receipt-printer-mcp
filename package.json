@@ -4,7 +4,8 @@
   "description": "MCP server for printing to the Rongta RP820 thermal receipt printer",
   "main": "index.js",
   "scripts": {
-    "start": "node index.js"
+    "start": "node index.js",
+    "test": "node --test"
   },
   "author": "",
   "license": "ISC",
