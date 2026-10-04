@@ -32,3 +32,17 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
 ```
 
 Fully quit and reopen Claude Desktop.
+
+## Development
+
+```sh
+npm test
+```
+
+Tests drive the server through a real MCP client with a fake print script,
+so they never touch the printer.
+
+Commits follow [Conventional Commits](https://www.conventionalcommits.org/).
+Releases follow [Semantic Versioning](https://semver.org/): bump `version` in
+`package.json`, add a `CHANGELOG.md` entry, commit as
+`chore(release): x.y.z`, and tag `vx.y.z`.
