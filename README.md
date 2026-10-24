@@ -169,6 +169,30 @@ https://receipt-printer.<you>.workers.dev/mcp
 Enter your email, type in the code you're sent, and the tools show up in
 Claude on the web, desktop, and mobile.
 
+### Printing from another Worker
+
+Other Workers in the same Cloudflare account can print without going through
+`/mcp`. Add a service binding to the calling Worker's `wrangler.jsonc`:
+
+```jsonc
+"services": [{ "binding": "PRINTER", "service": "receipt-printer", "entrypoint": "PrinterService" }]
+```
+
+Then call it over RPC:
+
+```js
+const result = await env.PRINTER.print("Buy milk\n");
+const status = await env.PRINTER.status();
+```
+
+Both methods resolve to `{ ok: boolean, message: string }` and don't throw for
+expected problems: an offline agent, lines over 48 characters, a full queue, or
+a printer error come back as `ok: false` with a message you can pass on to a
+person. A receipt queued while the agent is offline is `ok: true`, because it
+will print once the agent reconnects. Text is limited to 10,000 characters.
+
+The binding is the only way in, so `PrinterService` has no sign-in of its own.
+
 ### Moving the agent to a Raspberry Pi
 
 The Worker and the connectors stay as they are; only the agent moves.

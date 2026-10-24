@@ -6,6 +6,7 @@ import { authHandler } from "./auth.js";
 import { mcpHandler } from "./mcp.js";
 
 export { PrinterHub } from "./hub.js";
+export { PrinterService } from "./printer-service.js";
 
 // The token audience must be this server's canonical URL. Use PUBLIC_URL when
 // set (a custom domain), else whatever host the request arrived on.

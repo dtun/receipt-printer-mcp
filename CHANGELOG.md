@@ -15,6 +15,9 @@ All notable changes to this project are documented here. The format follows
 - Home print agent (`agent/`) that connects out to the Worker and prints
   through the same print script, with a launchd installer for macOS.
 - Control characters are stripped from remote text before printing.
+- `PrinterService`, a Worker RPC entrypoint so other Workers in the same
+  account can print through a service binding with `print(text)` and
+  `status()`.
 
 ### Changed
 
