@@ -1,0 +1,12 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "receipt-printer",
+  "main": "src/index.js",
+  "compatibility_date": "2026-08-22",
+  "compatibility_flags": ["nodejs_compat"],
+  "durable_objects": {
+    "bindings": [{ "name": "HUB", "class_name": "PrinterHub" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["PrinterHub"] }],
+  "observability": { "enabled": true }
+}
