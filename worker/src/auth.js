@@ -13,10 +13,11 @@ export const authHandler = {
   async fetch(request, env) {
     const url = new URL(request.url);
     try {
-      if (url.pathname === "/agent") return handleAgent(request, env);
-      if (url.pathname === "/authorize" && request.method === "GET") return showConsent(request, env);
-      if (url.pathname === "/authorize" && request.method === "POST") return decide(request, env);
-      if (url.pathname === "/callback") return callback(request, env);
+      // `return await` so failures land in the catch below.
+      if (url.pathname === "/agent") return await handleAgent(request, env);
+      if (url.pathname === "/authorize" && request.method === "GET") return await showConsent(request, env);
+      if (url.pathname === "/authorize" && request.method === "POST") return await decide(request, env);
+      if (url.pathname === "/callback") return await callback(request, env);
       if (url.pathname === "/") return new Response("Receipt printer MCP server. Connect at /mcp.\n");
       return new Response("Not found", { status: 404 });
     } catch (e) {
