@@ -8,8 +8,6 @@ export default defineConfig({
       miniflare: { bindings: {
           AGENT_TOKEN: "test-token",
           ALLOWED_EMAILS: "me@example.com, Partner@Example.com",
-          GOOGLE_CLIENT_ID: "google-client",
-          GOOGLE_CLIENT_SECRET: "google-secret",
         } },
     }),
   ],

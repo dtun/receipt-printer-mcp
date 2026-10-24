@@ -4,7 +4,12 @@ import { afterEach, expect, test, vi } from "vitest";
 const BASE = "https://printer.test";
 const REDIRECT = "https://claude.example/callback";
 
-afterEach(() => vi.restoreAllMocks());
+afterEach(async () => {
+  vi.restoreAllMocks();
+  // Storage is shared across tests; reset the per-address code limit.
+  const { keys } = await env.OAUTH_KV.list({ prefix: "email-code-rate:" });
+  await Promise.all(keys.map(({ name }) => env.OAUTH_KV.delete(name)));
+});
 
 // A tiny browser: carries cookies between requests, never follows redirects.
 function browser() {
@@ -22,17 +27,14 @@ function browser() {
   };
 }
 
-// Pretends to be Google for the token exchange and userinfo calls.
-function fakeGoogle(email) {
-  const real = globalThis.fetch;
-  vi.spyOn(globalThis, "fetch").mockImplementation((input, init) => {
-    const url = String(input instanceof Request ? input.url : input);
-    if (url.startsWith("https://oauth2.googleapis.com/token")) return Promise.resolve(Response.json({ access_token: "g" }));
-    if (url.startsWith("https://openidconnect.googleapis.com/")) {
-      return Promise.resolve(Response.json({ email, email_verified: true }));
-    }
-    return real(input, init);
+// Captures emailed codes instead of sending them.
+function inbox() {
+  const sent = [];
+  vi.spyOn(env.EMAIL, "send").mockImplementation(async (msg) => {
+    sent.push(msg);
+    return { messageId: "test" };
   });
+  return { sent, code: () => sent.at(-1)?.subject.match(/(\d{6})$/)[1] };
 }
 
 async function s256(v) {
@@ -40,8 +42,9 @@ async function s256(v) {
   return btoa(String.fromCharCode(...new Uint8Array(hash))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
-// Runs the whole connector sign-in as `email`. Returns the final response.
-async function signIn(email) {
+// Starts connecting a client and submits `email` on the consent page.
+// Returns the code page, the browser, and what's needed to finish.
+async function start(email) {
   const go = browser();
   const reg = await go("/register", {
     method: "POST",
@@ -67,15 +70,25 @@ async function signIn(email) {
   expect(html).toContain("Test client");
   const handle = html.match(/name="handle" value="([^"]+)"/)[1];
 
-  const approve = await go("/authorize", { method: "POST", body: new URLSearchParams({ handle, decision: "approve" }) });
-  expect(approve.status).toBe(302);
-  const google = new URL(approve.headers.get("Location"));
-  expect(google.origin).toBe("https://accounts.google.com");
-  expect(google.searchParams.get("code_challenge_method")).toBe("S256");
+  const codePage = await go("/authorize", {
+    method: "POST",
+    body: new URLSearchParams({ handle, decision: "approve", email }),
+  });
+  return { go, client_id, verifier, codePage, html: await codePage.text() };
+}
 
-  fakeGoogle(email);
-  const back = await go(`/callback?code=c&state=${google.searchParams.get("state")}`);
-  return { back, client_id, verifier, go };
+// Submits a code on a code page's form.
+function submitCode(go, html, code, decision = "verify") {
+  const action = html.match(/action="([^"]+)"/)[1].replace(/&amp;/g, "&");
+  return go(action, { method: "POST", body: new URLSearchParams({ code, decision }) });
+}
+
+// Runs the whole connector sign-in as `email`. Returns the final response.
+async function signIn(email) {
+  const mail = inbox();
+  const s = await start(email);
+  const back = await submitCode(s.go, s.html, mail.code() ?? "000000");
+  return { ...s, back, mail };
 }
 
 async function accessToken() {
@@ -111,8 +124,10 @@ test("/mcp requires a token", async () => {
   expect(res.headers.get("WWW-Authenticate")).toContain("resource_metadata");
 });
 
-test("an allowlisted Google account completes sign-in", async () => {
-  const { back } = await signIn("me@example.com");
+test("an allowlisted address gets a code and completes sign-in", async () => {
+  const { back, mail } = await signIn("me@example.com");
+  expect(mail.sent).toHaveLength(1);
+  expect(mail.sent[0].to).toBe("me@example.com");
   expect(back.status).toBe(302);
   const to = new URL(back.headers.get("Location"));
   expect(to.origin + to.pathname).toBe(REDIRECT);
@@ -120,15 +135,69 @@ test("an allowlisted Google account completes sign-in", async () => {
   expect(to.searchParams.get("state")).toBe("client-state");
 });
 
-test("allowlist matching ignores case", async () => {
-  const { back } = await signIn("partner@example.com");
+test("allowlist matching ignores case and spaces", async () => {
+  const { back, mail } = await signIn("  PARTNER@example.com ");
+  expect(mail.sent[0].to).toBe("partner@example.com");
   expect(back.status).toBe(302);
 });
 
-test("other Google accounts are refused", async () => {
-  const { back } = await signIn("stranger@example.com");
-  expect(back.status).toBe(403);
-  expect(await back.text()).toContain("isn&#39;t allowed");
+test("other addresses get no email, and the page doesn't say so", async () => {
+  const mail = inbox();
+  const allowed = await start("me@example.com");
+  const stranger = await start("stranger@example.com");
+  expect(mail.sent).toHaveLength(1);
+  expect(stranger.codePage.status).toBe(allowed.codePage.status);
+  const strip = (h) => h.replace(/state=[^"]+/, "").replace(/[\w.]+@example\.com/, "");
+  expect(strip(stranger.html)).toBe(strip(allowed.html));
+  const back = await submitCode(stranger.go, stranger.html, "123456");
+  expect(back.status).toBe(400);
+});
+
+test("a wrong code can be retried", async () => {
+  const mail = inbox();
+  const { go, html } = await start("me@example.com");
+  const wrong = await submitCode(go, html, mail.code() === "111111" ? "222222" : "111111");
+  expect(wrong.status).toBe(400);
+  const retry = await wrong.text();
+  expect(retry).toContain("didn&#39;t match");
+  const back = await submitCode(go, retry, mail.code());
+  expect(back.status).toBe(302);
+  expect(new URL(back.headers.get("Location")).searchParams.get("code")).toBeTruthy();
+});
+
+test("five wrong codes end the attempt", async () => {
+  const mail = inbox();
+  let { go, html } = await start("me@example.com");
+  const bad = mail.code() === "111111" ? "222222" : "111111";
+  let res;
+  for (let i = 0; i < 5; i++) {
+    res = await submitCode(go, html, bad);
+    html = await res.text();
+  }
+  expect(res.status).toBe(403);
+  expect(html).toContain("Too many tries");
+});
+
+test("a code page can't be reused once it's been submitted", async () => {
+  const mail = inbox();
+  const { go, html } = await start("me@example.com");
+  await submitCode(go, html, mail.code());
+  const again = await submitCode(go, html, mail.code());
+  expect(again.status).toBe(400);
+});
+
+test("cancel sends the client access_denied", async () => {
+  inbox();
+  const { go, html } = await start("me@example.com");
+  const back = await submitCode(go, html, "", "cancel");
+  expect(back.status).toBe(302);
+  expect(new URL(back.headers.get("Location")).searchParams.get("error")).toBe("access_denied");
+});
+
+test("codes to one address are limited per hour", async () => {
+  const mail = inbox();
+  for (let i = 0; i < 6; i++) await start("partner@example.com");
+  expect(mail.sent.length).toBeLessThanOrEqual(5);
 });
 
 test("print_receipt queues while the agent is offline", async () => {

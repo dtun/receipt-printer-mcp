@@ -10,8 +10,8 @@ All notable changes to this project are documented here. The format follows
 
 - Remote access from any Claude client, including mobile: a Cloudflare
   Worker (`worker/`) serves `print_receipt` and `printer_status` over remote
-  MCP behind Google sign-in limited to `ALLOWED_EMAILS`, and queues jobs in a
-  Durable Object.
+  MCP, signing people in with a code emailed to an address in
+  `ALLOWED_EMAILS`, and queues jobs in a Durable Object.
 - Home print agent (`agent/`) that connects out to the Worker and prints
   through the same print script, with a launchd installer for macOS.
 - Control characters are stripped from remote text before printing.

@@ -82,7 +82,7 @@ echo "Sent to Rongta_RP820."
 
 ```
 Claude (phone/web) ──► Worker on Cloudflare (worker/)
-                         /mcp    the same two tools, behind Google sign-in
+                         /mcp    the same two tools, behind an emailed code
                          /agent  home agent's WebSocket
                          PrinterHub Durable Object queues jobs
                               ▲
@@ -96,7 +96,9 @@ keeps a connection open to it and prints whatever arrives, using the same
 print script as the local server. Nothing at home accepts incoming
 connections.
 
-- Only Google accounts listed in `ALLOWED_EMAILS` can connect.
+- Only addresses listed in `ALLOWED_EMAILS` can connect. Adding the connector
+  emails a 6-digit code to the address you enter; 5 wrong codes and you start
+  over, and each address gets at most 5 codes an hour.
 - If the agent is offline, up to 20 receipts wait in the queue and print when
   it reconnects.
 - Delivery is at most once: if the connection drops mid-job, a receipt can be
@@ -120,25 +122,19 @@ namespace on first deploy; if your version asks for an id instead, run
 `npx wrangler kv namespace create OAUTH_KV` and add the id to
 `wrangler.jsonc`.
 
-### 2. Create a Google sign-in client
+### 2. Set up email for sign-in codes
 
-In [Google Cloud Console](https://console.cloud.google.com/apis/credentials),
-create an **OAuth client ID** of type **Web application** with this
-authorized redirect URI:
-
-```
-https://receipt-printer.<you>.workers.dev/callback
-```
-
-On the OAuth consent screen, leave the app in **Testing** and add each
-person's Google account as a test user.
+Codes are sent from the address in `EMAIL_FROM` (`wrangler.jsonc`), which must
+be on a domain with [Email Routing](https://developers.cloudflare.com/email-routing/)
+turned on. On the Workers Free plan, mail can only go to
+[verified destination addresses](https://developers.cloudflare.com/email-routing/setup/email-routing-addresses/),
+so verify each person's address under **Email → Email Routing → Destination
+addresses**. On Workers Paid it can go to any address.
 
 ### 3. Set the Worker's secrets
 
 ```sh
-npx wrangler secret put GOOGLE_CLIENT_ID
-npx wrangler secret put GOOGLE_CLIENT_SECRET
-npx wrangler secret put ALLOWED_EMAILS   # comma separated: you@gmail.com,them@gmail.com
+npx wrangler secret put ALLOWED_EMAILS   # comma separated: you@example.com,them@example.com
 openssl rand -hex 32                     # copy this for the next prompt and for the agent
 npx wrangler secret put AGENT_TOKEN
 ```
@@ -170,8 +166,8 @@ custom connector**, with the URL
 https://receipt-printer.<you>.workers.dev/mcp
 ```
 
-Approve the request, sign in with an allowed Google account, and the tools
-show up in Claude on the web, desktop, and mobile.
+Enter your email, type in the code you're sent, and the tools show up in
+Claude on the web, desktop, and mobile.
 
 ### Moving the agent to a Raspberry Pi
 

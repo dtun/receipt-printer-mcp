@@ -1,5 +1,5 @@
-// Remote side of the receipt printer. Claude connects at /mcp (OAuth via
-// Google, allowlisted accounts only); the home agent connects at /agent.
+// Remote side of the receipt printer. Claude connects at /mcp (OAuth with an
+// emailed code, allowlisted addresses only); the home agent connects at /agent.
 
 import { OAuthProvider } from "@cloudflare/workers-oauth-provider";
 import { authHandler } from "./auth.js";

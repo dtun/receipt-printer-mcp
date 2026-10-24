@@ -7,6 +7,8 @@
   "durable_objects": {
     "bindings": [{ "name": "HUB", "class_name": "PrinterHub" }]
   },
+  "send_email": [{ "name": "EMAIL", "allowed_sender_addresses": ["printer@kitkit.dev"] }],
+  "vars": { "EMAIL_FROM": "printer@kitkit.dev" },
   "kv_namespaces": [{ "binding": "OAUTH_KV" }],
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["PrinterHub"] }],
   "observability": { "enabled": true }

@@ -1,7 +1,5 @@
 # Copy to .dev.vars for `npm run dev`; in production set each with `wrangler secret put`.
-GOOGLE_CLIENT_ID=
-GOOGLE_CLIENT_SECRET=
-# Google accounts allowed to connect, comma separated.
+# Addresses allowed to connect, comma separated.
 ALLOWED_EMAILS=
 # Shared with the home print agent. Generate with: openssl rand -hex 32
 AGENT_TOKEN=
