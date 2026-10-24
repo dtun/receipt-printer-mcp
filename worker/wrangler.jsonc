@@ -3,10 +3,11 @@
   "name": "receipt-printer",
   "main": "src/index.js",
   "compatibility_date": "2026-08-22",
-  "compatibility_flags": ["nodejs_compat"],
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
   "durable_objects": {
     "bindings": [{ "name": "HUB", "class_name": "PrinterHub" }]
   },
+  "kv_namespaces": [{ "binding": "OAUTH_KV" }],
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["PrinterHub"] }],
   "observability": { "enabled": true }
 }
