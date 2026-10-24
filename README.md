@@ -1,8 +1,15 @@
 # receipt-printer-mcp
 
-A local [MCP](https://modelcontextprotocol.io) server that lets Claude Desktop
-chats print to a Rongta RP820 thermal receipt printer: notes, tickets, ASCII
-art coloring pages, anything that fits on a roll of 80mm paper.
+An [MCP](https://modelcontextprotocol.io) server that lets Claude print to a
+Rongta RP820 thermal receipt printer: notes, tickets, ASCII art coloring pages,
+anything that fits on a roll of 80mm paper.
+
+There are two ways to connect:
+
+- **Local:** Claude Desktop on the machine the printer is plugged into
+  (`index.js`). See [Setup](#setup).
+- **Remote:** Claude on any device, including the mobile app, from anywhere.
+  See [Remote access](#remote-access).
 
 ## Tools
 
@@ -71,6 +78,155 @@ echo "Sent to Rongta_RP820."
 4. In a chat, try "check the receipt printer status", then "print a coloring
    page of a dragon".
 
+## Remote access
+
+```
+Claude (phone/web) ──► Worker on Cloudflare (worker/)
+                         /mcp    the same two tools, behind Google sign-in
+                         /agent  home agent's WebSocket
+                         PrinterHub Durable Object queues jobs
+                              ▲
+                              │ outbound WebSocket, no open ports
+                              │
+                       Print agent at home (agent/) ──► print.sh ──► printer
+```
+
+Claude reaches the printer through a Cloudflare Worker. A small agent at home
+keeps a connection open to it and prints whatever arrives, using the same
+print script as the local server. Nothing at home accepts incoming
+connections.
+
+- Only Google accounts listed in `ALLOWED_EMAILS` can connect.
+- If the agent is offline, up to 20 receipts wait in the queue and print when
+  it reconnects.
+- Delivery is at most once: if the connection drops mid-job, a receipt can be
+  lost, but it never prints twice.
+- Text from Claude is stripped of control characters before printing, so it
+  can't send raw printer commands.
+
+### 1. Deploy the Worker
+
+Requires a Cloudflare account. From `worker/`:
+
+```sh
+npm install
+npx wrangler login
+npx wrangler deploy
+```
+
+Note the URL it prints, such as
+`https://receipt-printer.<you>.workers.dev`. Wrangler creates the `OAUTH_KV`
+namespace on first deploy; if your version asks for an id instead, run
+`npx wrangler kv namespace create OAUTH_KV` and add the id to
+`wrangler.jsonc`.
+
+### 2. Create a Google sign-in client
+
+In [Google Cloud Console](https://console.cloud.google.com/apis/credentials),
+create an **OAuth client ID** of type **Web application** with this
+authorized redirect URI:
+
+```
+https://receipt-printer.<you>.workers.dev/callback
+```
+
+On the OAuth consent screen, leave the app in **Testing** and add each
+person's Google account as a test user.
+
+### 3. Set the Worker's secrets
+
+```sh
+npx wrangler secret put GOOGLE_CLIENT_ID
+npx wrangler secret put GOOGLE_CLIENT_SECRET
+npx wrangler secret put ALLOWED_EMAILS   # comma separated: you@gmail.com,them@gmail.com
+openssl rand -hex 32                     # copy this for the next prompt and for the agent
+npx wrangler secret put AGENT_TOKEN
+```
+
+If you serve the Worker from a custom domain, also set `PUBLIC_URL` to it.
+
+### 4. Run the agent on the Mac
+
+Requires Node.js 22 or later and the print script from
+[Requirements](#requirements).
+
+```sh
+agent/macos/install.sh   # first run creates ~/.config/receipt-printer/agent.env
+# fill in RECEIPT_SERVER_URL and AGENT_TOKEN, then:
+agent/macos/install.sh   # installs and starts the LaunchAgent
+tail -f ~/Library/Logs/receipt-printer-agent.log
+```
+
+It starts at login and restarts if it exits. Receipts only print while the
+Mac is awake. Turning on "Prevent automatic sleeping when the display is off"
+in System Settings helps. Run `agent/macos/install.sh uninstall` to remove it.
+
+### 5. Add the connector in Claude
+
+Each person does this on their own account: **Settings → Connectors → Add
+custom connector**, with the URL
+
+```
+https://receipt-printer.<you>.workers.dev/mcp
+```
+
+Approve the request, sign in with an allowed Google account, and the tools
+show up in Claude on the web, desktop, and mobile.
+
+### Moving the agent to a Raspberry Pi
+
+The Worker and the connectors stay as they are; only the agent moves.
+
+1. On the Pi, install Node.js 22+ and clone this repo.
+2. Write a print script for the Pi. With the printer plugged in over USB it
+   usually appears as `/dev/usb/lp0` (add your user to the `lp` group):
+
+   ```bash
+   #!/usr/bin/env bash
+   set -euo pipefail
+   {
+     cat
+     printf '\n\n\n'          # feed past the print head
+     printf '\x1dV\x42\x00'   # GS V 66 0: feed + partial cut
+   } > /dev/usb/lp0
+   echo "Sent to /dev/usb/lp0."
+   ```
+
+   For a printer on the network, replace the redirect with
+   `| nc -q1 <printer-ip> 9100`.
+
+3. Create `~/.config/receipt-printer/agent.env` with `RECEIPT_SERVER_URL`,
+   the same `AGENT_TOKEN`, and `PRINT_SCRIPT` pointing at that script. Run
+   `chmod 600` on it.
+4. Run the agent with systemd, in `/etc/systemd/system/receipt-printer-agent.service`
+   (adjust the user and paths):
+
+   ```ini
+   [Unit]
+   Description=Receipt printer agent
+   Wants=network-online.target
+   After=network-online.target
+
+   [Service]
+   User=pi
+   ExecStart=/usr/bin/node --env-file=/home/pi/.config/receipt-printer/agent.env /home/pi/receipt-printer-mcp/agent/index.js
+   Restart=always
+   RestartSec=10
+
+   [Install]
+   WantedBy=multi-user.target
+   ```
+
+   ```sh
+   sudo systemctl enable --now receipt-printer-agent
+   ```
+
+5. Run `agent/macos/install.sh uninstall` on the Mac. The Pi's connection
+   replaces the Mac's as soon as it connects.
+
+`printer_status` asks CUPS (`lpstat`), so on a Pi without CUPS it reports
+that it can't reach the printer, even though printing works.
+
 ## Development
 
 ```sh
@@ -78,7 +234,16 @@ npm test
 ```
 
 The tests drive the server through a real MCP client with a fake print
-script, so they never touch the printer.
+script, so they never touch the printer. They also cover the agent.
+
+The Worker has its own tests, which run in the Workers runtime:
+
+```sh
+cd worker && npm test
+```
+
+To run the Worker locally, copy `worker/.dev.vars.example` to
+`worker/.dev.vars`, fill it in, and run `npm run dev`.
 
 ### Conventions
 
