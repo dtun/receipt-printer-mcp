@@ -236,3 +236,10 @@ test("printer_status reports an offline agent as an error", async () => {
   expect(result.isError).toBe(true);
   expect(result.content[0].text).toMatch(/offline/);
 });
+
+test("the home page shows the connector URL to copy", async () => {
+  const res = await exports.default.fetch(`${BASE}/`);
+  expect(res.status).toBe(200);
+  expect(res.headers.get("Content-Type")).toContain("text/html");
+  expect(await res.text()).toContain(`${BASE}/mcp`);
+});

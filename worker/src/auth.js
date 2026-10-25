@@ -5,6 +5,7 @@
 
 import { AuthorizationError, CimdFetchError, authorizationErrorRedirect } from "@cloudflare/workers-oauth-provider";
 import { handleAgent } from "./agent-route.js";
+import { setupPage } from "./setup-page.js";
 
 const MAX_TRIES = 5; // wrong codes before starting over
 const CODES_PER_HOUR = 5; // per address, so nobody can flood an inbox
@@ -18,7 +19,7 @@ export const authHandler = {
       if (url.pathname === "/authorize" && request.method === "GET") return await showConsent(request, env);
       if (url.pathname === "/authorize" && request.method === "POST") return await sendCode(request, env);
       if (url.pathname === "/verify" && request.method === "POST") return await verify(request, env);
-      if (url.pathname === "/") return new Response("Receipt printer MCP server. Connect at /mcp.\n");
+      if (url.pathname === "/") return setupPage(env.PUBLIC_URL?.replace(/\/$/, "") ?? url.origin);
       return new Response("Not found", { status: 404 });
     } catch (e) {
       if (e instanceof AuthorizationError && e.redirectTo) return Response.redirect(e.redirectTo, 302);

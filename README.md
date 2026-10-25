@@ -169,6 +169,10 @@ https://receipt-printer.<you>.workers.dev/mcp
 Enter your email, type in the code you're sent, and the tools show up in
 Claude on the web, desktop, and mobile.
 
+To walk someone else through it, send them the Worker's home page
+(`https://receipt-printer.<you>.workers.dev/`). It lists these steps with a
+button that copies the URL.
+
 ### Printing from another Worker
 
 Other Workers in the same Cloudflare account can print without going through
